@@ -1,0 +1,506 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Escáner de radio</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 15px 20px 8px;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: #202020;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+
+    display: flex;
+    flex-direction: column;
+}
+
+h1 {
+    font-size: 27px;
+    margin: 15px 0 22px;
+}
+
+#nombre {
+    font-size: 22px;
+    font-weight: bold;
+    color: #FFD600;
+    min-height: 55px;
+    margin: 20px 0;
+}
+
+#estado {
+    color: #aaa;
+    font-size: 15px;
+    margin: 12px;
+}
+
+button {
+    border: none;
+    border-radius: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    margin: 9px auto;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.1s ease, filter 0.1s ease;
+}
+
+#subir, #bajar {
+    width: 90%;
+    height: 105px;
+    min-height: 105px;
+    flex-shrink: 0;
+    font-size: 27px;
+}
+
+#subir {
+    background: #FFD600;
+    color: black;
+}
+
+#bajar {
+    background: #00C853;
+    color: black;
+}
+
+/* BOTÓN AZUL AMPLIADO */
+
+#parar {
+    width: 96%;
+    flex: 1;
+    min-height: 150px;
+    margin: 9px auto 0;
+    background: #1565C0;
+    color: white;
+    font-size: 35px;
+    font-weight: bold;
+    box-shadow: 0 0 18px #1565C0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ESPECTRO */
+
+.espectro {
+    position: absolute;
+    left: 5%;
+    bottom: 7px;
+    height: 42px;
+    width: 90%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+button.seleccionado .espectro {
+    display: flex;
+}
+
+.barra {
+    width: 3px;
+    height: 5px;
+    border-radius: 2px;
+    flex-shrink: 1;
+    min-width: 1px;
+    animation: frecuenciaSuave 0.85s infinite alternate ease-in-out;
+}
+
+#subir .barra {
+    background: #806900;
+}
+
+#bajar .barra {
+    background: #005c28;
+}
+
+.activo .barra {
+    animation: frecuencia 0.38s infinite alternate ease-in-out;
+}
+
+#subir.activo .barra {
+    background: #332900;
+}
+
+#bajar.activo .barra {
+    background: #003819;
+}
+
+.barra:nth-child(3n) {
+    animation-delay: .10s;
+}
+
+.barra:nth-child(3n+1) {
+    animation-delay: .18s;
+}
+
+.barra:nth-child(4n) {
+    animation-duration: .65s;
+}
+
+@keyframes frecuenciaSuave {
+    0% { height: 4px; }
+    50% { height: 25px; }
+    100% { height: 6px; }
+}
+
+@keyframes frecuencia {
+    0% { height: 5px; }
+    50% { height: 40px; }
+    100% { height: 8px; }
+}
+
+button:active,
+button.presionado {
+    filter: brightness(1.2);
+    transform: scale(.98);
+}
+</style>
+</head>
+
+<body>
+
+<h1>ESCÁNER DE RADIO</h1>
+
+<div id="nombre">Pulsa Escanear</div>
+<div id="estado">Preparado</div>
+
+<button id="subir">
+    SUBIR
+    <div class="espectro" id="espectroSubir"></div>
+</button>
+
+<button id="bajar">
+    BAJAR
+    <div class="espectro" id="espectroBajar"></div>
+</button>
+
+<button id="parar">MANTENER EMISORA</button>
+
+<audio id="audio" preload="none"></audio>
+
+<script>
+const emisoras = [
+    { nombre: "Remember The Music FM", url: "https://eu1.lhdserver.es:9041/stream" },
+    { nombre: "Kiss FM", url: "https://kissfm.kissfmradio.cires21.com/kissfm.mp3" },
+    { nombre: "Radio Paradise", url: "https://stream.radioparadise.com/aac-320" },
+    { nombre: "Los 40 Classic", url: "https://22543.live.streamtheworld.com/LOS40_CLASSIC.mp3" },
+    { nombre: "RADIOCA", url: "https://tmr80s.radioca.st/stream" },
+    { nombre: "80s ALIVE", url: "https://stream.80sa.live/80s-alive.mp3" },
+    { nombre: "Radio Marina - Blanes", url: "https://radio.martiproduccions.com/listen/marina/radiomarina" },
+    { nombre: "Radio 7 - Barakaldo", url: "https://radio7.streaming-pro.com:6146/radio7.mp3" },
+    { nombre: "Radio X Classic Rock - Reino Unido", url: "https://media-the.musicradio.com/RadioXClassicRockMP3" },
+    { nombre: "Bucks Radio - Buckinghamshire", url: "https://stream.radiojar.com/f6mru9artg0uv" }
+];
+
+const audio = document.getElementById("audio");
+const nombre = document.getElementById("nombre");
+const estado = document.getElementById("estado");
+
+const subir = document.getElementById("subir");
+const bajar = document.getElementById("bajar");
+const parar = document.getElementById("parar");
+
+let indice = -1;
+let temporizador = null;
+let escaneando = false;
+let direccion = 1;
+let versionReproduccion = 0;
+
+// CREAR ESPECTRO
+
+function crearEspectro(id) {
+    const contenedor = document.getElementById(id);
+
+    for (let i = 0; i < 55; i++) {
+        const barra = document.createElement("span");
+        barra.className = "barra";
+        contenedor.appendChild(barra);
+    }
+}
+
+crearEspectro("espectroSubir");
+crearEspectro("espectroBajar");
+
+// ACTUALIZAR ESPECTRO
+
+function actualizarEspectro() {
+    const haySeleccion = indice >= 0;
+
+    subir.classList.toggle(
+        "seleccionado",
+        haySeleccion && direccion === 1
+    );
+
+    bajar.classList.toggle(
+        "seleccionado",
+        haySeleccion && direccion === -1
+    );
+
+    subir.classList.toggle(
+        "activo",
+        escaneando && direccion === 1
+    );
+
+    bajar.classList.toggle(
+        "activo",
+        escaneando && direccion === -1
+    );
+}
+
+// SISTEMA DE SONIDO
+
+let contextoSonido = null;
+
+function obtenerContexto() {
+    if (!contextoSonido) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) contextoSonido = new AC();
+    }
+
+    if (contextoSonido && contextoSonido.state === "suspended") {
+        contextoSonido.resume();
+    }
+
+    return contextoSonido;
+}
+
+function emitirPitido(frecuencia, volumen, duracion) {
+    const contexto = obtenerContexto();
+    if (!contexto) return;
+
+    const oscilador = contexto.createOscillator();
+    const ganancia = contexto.createGain();
+    const ahora = contexto.currentTime;
+
+    oscilador.type = "sine";
+    oscilador.frequency.setValueAtTime(frecuencia, ahora);
+
+    ganancia.gain.setValueAtTime(0.001, ahora);
+    ganancia.gain.exponentialRampToValueAtTime(volumen, ahora + 0.015);
+    ganancia.gain.exponentialRampToValueAtTime(0.001, ahora + duracion);
+
+    oscilador.connect(ganancia);
+    ganancia.connect(contexto.destination);
+
+    oscilador.start(ahora);
+    oscilador.stop(ahora + duracion + 0.02);
+}
+
+function reproducirSonidoBoton(boton) {
+    if (boton === subir) emitirPitido(1150, 0.35, 0.16);
+    if (boton === bajar) emitirPitido(950, 0.35, 0.16);
+    if (boton === parar) emitirPitido(1900, 0.85, 0.16);
+}
+
+// REPRODUCCIÓN DE EMISORAS
+
+function reproducir() {
+    if (indice < 0) return;
+
+    const miVersion = ++versionReproduccion;
+
+    audio.pause();
+    audio.src = emisoras[indice].url;
+    audio.load();
+
+    nombre.textContent = emisoras[indice].nombre;
+    estado.textContent = "Conectando...";
+
+    audio.play().then(() => {
+        if (miVersion !== versionReproduccion) return;
+
+        estado.textContent = escaneando
+            ? "Escaneando emisoras..."
+            : "Reproduciendo";
+    }).catch(() => {
+        if (miVersion !== versionReproduccion) return;
+
+        estado.textContent = "Esperando conexión o emisora no disponible";
+    });
+}
+
+// CAMBIAR DE EMISORA
+
+function siguiente() {
+    indice += direccion;
+
+    if (indice >= emisoras.length) indice = 0;
+    if (indice < 0) indice = emisoras.length - 1;
+
+    reproducir();
+}
+
+// INICIAR ESCANEO
+
+function iniciarEscaneo(sentido) {
+    direccion = sentido;
+    escaneando = true;
+
+    clearInterval(temporizador);
+
+    siguiente();
+    actualizarEspectro();
+
+    temporizador = setInterval(() => {
+        if (escaneando) siguiente();
+    }, 7000);
+}
+
+// DETENER ESCANEO Y CONSERVAR EMISORA
+
+function detenerEscaneo() {
+    escaneando = false;
+
+    clearInterval(temporizador);
+    temporizador = null;
+
+    actualizarEspectro();
+}
+
+// ACCIONES DE LOS BOTONES
+
+function accionarBoton(boton) {
+    reproducirSonidoBoton(boton);
+
+    if (boton === subir) {
+        iniciarEscaneo(1);
+
+    } else if (boton === bajar) {
+        iniciarEscaneo(-1);
+
+    } else if (boton === parar) {
+        detenerEscaneo();
+
+        if (indice >= 0) {
+            estado.textContent = "Emisora seleccionada · Reproduciendo";
+        } else {
+            estado.textContent = "Selecciona primero una emisora";
+        }
+    }
+}
+
+// PITIDOS REPETIDOS
+
+let intervaloPitidos = null;
+
+function iniciarPitidos(boton) {
+    clearInterval(intervaloPitidos);
+
+    intervaloPitidos = setInterval(() => {
+        reproducirSonidoBoton(boton);
+    }, 450);
+}
+
+function detenerPitidos() {
+    clearInterval(intervaloPitidos);
+    intervaloPitidos = null;
+}
+
+// CONTROL TÁCTIL Y ARRASTRE
+
+let gestoActivo = false;
+let botonActual = null;
+
+function buscarBoton(x, y) {
+    const elemento = document.elementFromPoint(x, y);
+    return elemento ? elemento.closest("button") : null;
+}
+
+function actualizarEstadoBoton(nuevoBoton) {
+    if (botonActual !== nuevoBoton) {
+
+        if (botonActual) {
+            botonActual.classList.remove("presionado");
+        }
+
+        detenerPitidos();
+
+        botonActual = nuevoBoton;
+
+        if (botonActual) {
+            botonActual.classList.add("presionado");
+
+            accionarBoton(botonActual);
+            iniciarPitidos(botonActual);
+        }
+    }
+}
+
+document.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    gestoActivo = true;
+
+    obtenerContexto();
+
+    actualizarEstadoBoton(
+        buscarBoton(e.clientX, e.clientY)
+    );
+
+}, { passive: false });
+
+document.addEventListener("pointermove", (e) => {
+    if (!gestoActivo) return;
+
+    actualizarEstadoBoton(
+        buscarBoton(e.clientX, e.clientY)
+    );
+
+}, { passive: false });
+
+// FINALIZAR GESTO
+
+function finalizarGesto() {
+    gestoActivo = false;
+
+    detenerPitidos();
+
+    if (botonActual) {
+        botonActual.classList.remove("presionado");
+        botonActual = null;
+    }
+}
+
+document.addEventListener("pointerup", finalizarGesto);
+document.addEventListener("pointercancel", finalizarGesto);
+
+// EVITAR CLICS DUPLICADOS
+
+document.addEventListener("click", (e) => {
+    if (e.target.closest("button")) {
+        e.preventDefault();
+    }
+}, true);
+
+// ERRORES DE AUDIO
+
+audio.addEventListener("error", () => {
+    if (!audio.getAttribute("src")) return;
+
+    estado.textContent = "Error de reproducción de esta emisora";
+});
+
+</script>
+
+</body>
+</html>
